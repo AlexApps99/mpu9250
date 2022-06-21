@@ -1,9 +1,9 @@
 use ak8963::{self, AK8963};
 
-use hal::blocking::delay::DelayMs;
-use hal::blocking::i2c;
-use hal::blocking::spi;
-use hal::digital::v2::OutputPin;
+use hal::delay::blocking::DelayUs;
+use hal::i2c::blocking as i2c;
+use hal::spi::blocking as spi;
+use hal::digital::blocking::OutputPin;
 
 use Register;
 
@@ -123,9 +123,8 @@ impl<SPI, NCS, E, EO> Device for SpiDevice<SPI, NCS>
                  reg: Register,
                  buffer: &mut [u8])
                  -> Result<(), Self::Error> {
-        buffer[0] = reg.read_address();
         self.ncs.set_low().map_err(SpiError::NCSError)?;
-        self.spi.transfer(buffer)?;
+        self.spi.transfer(buffer, &[reg.read_address()])?;
         self.ncs.set_high().map_err(SpiError::NCSError)?;
 
         Ok(())
@@ -165,7 +164,7 @@ impl<SPI, NCS, E, EO> AK8963 for SpiDevice<SPI, NCS>
 {
     type Error = SpiError<E, EO>;
 
-    fn init<D: DelayMs<u8>>(&mut self,
+    fn init<D: DelayUs>(&mut self,
                             delay: &mut D)
                             -> Result<(), Self::Error> {
         // Isolate the auxiliary master I2C bus (AUX_CL, AUX_DA)
@@ -176,7 +175,7 @@ impl<SPI, NCS, E, EO> AK8963 for SpiDevice<SPI, NCS>
         Ok(())
     }
 
-    fn finalize<D: DelayMs<u8>>(&mut self,
+    fn finalize<D: DelayUs>(&mut self,
                                 delay: &mut D)
                                 -> Result<(), Self::Error> {
         // set aux I2C frequency to 400 KHz (should be configurable?)
@@ -259,9 +258,7 @@ pub struct I2cDevice<I2C> {
 }
 
 impl<E, I2C> I2cDevice<I2C>
-    where I2C: i2c::Read<Error = E>
-              + i2c::Write<Error = E>
-              + i2c::WriteRead<Error = E>
+    where I2C: i2c::I2c + embedded_hal::i2c::ErrorType<Error = E>
 {
     /// Create a new I2C device
     pub fn new(i2c: I2C) -> Self {
@@ -270,9 +267,7 @@ impl<E, I2C> I2cDevice<I2C>
 }
 
 impl<E, I2C> Releasable for I2cDevice<I2C>
-    where I2C: i2c::Read<Error = E>
-              + i2c::Write<Error = E>
-              + i2c::WriteRead<Error = E>
+    where I2C: i2c::I2c + embedded_hal::i2c::ErrorType<Error = E>
 {
     type Released = I2C;
 
@@ -282,9 +277,7 @@ impl<E, I2C> Releasable for I2cDevice<I2C>
 }
 
 impl<E, I2C> Device for I2cDevice<I2C>
-    where I2C: i2c::Read<Error = E>
-              + i2c::Write<Error = E>
-              + i2c::WriteRead<Error = E>
+    where I2C: i2c::I2c + embedded_hal::i2c::ErrorType<Error = E>
 {
     type Error = I2CError<E>;
 
@@ -321,13 +314,11 @@ impl<E, I2C> Device for I2cDevice<I2C>
 }
 
 impl<I2C, E> AK8963 for I2cDevice<I2C>
-    where I2C: i2c::Read<Error = E>
-              + i2c::Write<Error = E>
-              + i2c::WriteRead<Error = E>
+    where I2C: i2c::I2c + embedded_hal::i2c::ErrorType<Error = E>
 {
     type Error = I2CError<E>;
 
-    fn init<D: DelayMs<u8>>(&mut self,
+    fn init<D: DelayUs>(&mut self,
                             delay: &mut D)
                             -> Result<(), Self::Error> {
         Device::write(self, Register::USER_CTRL, 0)?;
@@ -410,9 +401,7 @@ impl<SPI, NCS, E, EO> NineDOFDevice for SpiDevice<SPI, NCS>
 }
 
 impl<I2C, E> NineDOFDevice for I2cDevice<I2C>
-    where I2C: i2c::Read<Error = E>
-              + i2c::Write<Error = E>
-              + i2c::WriteRead<Error = E>
+    where I2C: i2c::I2c + embedded_hal::i2c::ErrorType<Error = E>
 {
     fn read_9dof(&mut self,
                  reg: Register,
